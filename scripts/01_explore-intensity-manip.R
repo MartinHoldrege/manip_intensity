@@ -8,7 +8,8 @@
 
 library(tidyverse)
 library(DBI)
-
+source("scripts/functions.R")
+theme_set(theme_classic())
 
 # connect to database -----------------------------------------------------
 
@@ -68,22 +69,109 @@ rSOILWAT2::dbW_disconnectConnection()
 # run example for 1 site/yr -----------------------------------------------
 
 data <- sw_weatherList[[1]][[1]][["1980"]]@data # this is a matrix
-x <- df[ , "PPT_cm"] # vector of precip data for one year
+x <- data[ , "PPT_cm"] # vector of precip data for one year
 hist(x[x>0], breaks = 20)
 sum(x>0)
 
 
-# function development, later put in separate script
-# Continue here
-increase_intensity <- function(x, rm_from = 1, add_to = 1) {
-  # rm_from and add_to not implemented yet
-  x
-  # locations in vector on which it rained
-  precip_loc <- which(x > 0)
-  n <- length(precip_locs)
+
+
+
+# extract all precip yrs/sites --------------------------------------------
+
+names(sw_weatherList) <- as.character(sites)
+
+# combine 
+comb_wx <- map(sw_weatherList, function(x) {
+  # just one scenerio so just one list element for each site?
+  combine_yrs(x[[1]])
+}) %>% 
+  bind_rows(.id = "site") %>% 
+  mutate(site = as.numeric(site))
+
+
+# manipulate precip -------------------------------------------------------
+
+comb_wx2 <- comb_wx %>% 
+  arrange(site, year, DOY) %>% 
+  # for now grouping by year to insure annual precip unchanged
+  group_by(site, year) %>% 
+  mutate(PPT_manip = increase_intensity(PPT_cm))
+
+manip_lookup <- c("PPT_cm" = "ambient", "PPT_manip" = "incr intensity")
+# yearly summaries
+yrly_df <- comb_wx2 %>% 
+  pivot_longer(matches("^PPT"), names_to = "manip", values_to = "PPT") %>% 
+  # yearly summaries
+  group_by(site, year, manip) %>% 
+  summarise(# number of days with precip
+            n_days = sum(PPT > 0),
+            # annual precip
+            ap = sum(PPT),
+            # mean precip on days w/ precip
+            mean_PPT = ap/n_days,
+            med_PPT = median(PPT[PPT > 0])) %>% 
+  mutate(manip = manip_lookup[manip])
   
-  rm_days <- seq(from = 1, to = length(precip_days), by = 2)
-  add_days <- 1:
+# distributional figures --------------------------------------------------
+wrap_site <- function(x) {
+  fig1 <-  x + facet_wrap(~site) + 
+    labs(subtitle = "by site")
+  fig2 <- x + facet_wrap(~site, scales = "free") + 
+    labs(subtitle = "by site, scales differ")
+
+  list(fig1, fig2)
 }
 
-dbDisconnect(db)
+pdf("figures/ambient_vs_intensity_distributions_v1.pdf")
+
+g <- ggplot() +
+  geom_density(data = comb_wx2[comb_wx2$PPT_manip > 0, ], 
+               mapping = aes(x = PPT_manip, color = "incr intensity")) +
+  geom_density(data = comb_wx2[comb_wx2$PPT_cm > 0, ], 
+               mapping = aes(x = PPT_cm, color = "ambient")) + 
+  labs(x = "Daily PPT (cm)",
+       title = "Intensity increased by adding odd ppt days to even days") +
+  scale_color_manual(values = c("blue", "red"))
+
+wrap_site(g)
+
+
+
+# distributions of yrly stats ---------------------------------------------
+
+g2 <- ggplot(yrly_df, aes(color = manip)) +
+  scale_color_manual(values = c("blue", "red")) +
+  labs(subtitle = "by site",
+       caption = "Distributions of yearly summaries")
+
+g3 <- g2 +
+  geom_density(aes(n_days)) +
+  geom_rug(aes(n_days), sides = "b") +
+  labs(title = "number of days per year with precip")
+
+wrap_site(g3) 
+
+g4 <- g2 +
+  geom_density(aes(med_PPT)) +
+  geom_rug(aes(med_PPT), sides = "b") +
+  labs(title = "Median daily PPT on days with PPT")
+
+wrap_site(g4)
+
+g5 <- g2 +
+  geom_density(aes(mean_PPT)) +
+  geom_rug(aes(mean_PPT), sides = "b") +
+  labs(title = "Mean daily PPT on days with PPT")
+
+wrap_site(g5)
+
+g6 <- g2 +
+  geom_density(aes(ap)) +
+  geom_rug(aes(ap), sides = "b") +
+  labs(title = "Annual precip",
+       x = "Annual PPT (cm)")
+
+wrap_site(g6)
+
+dev.off()
