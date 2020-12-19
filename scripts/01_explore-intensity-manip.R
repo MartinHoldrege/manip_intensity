@@ -96,7 +96,7 @@ comb_wx2 <- comb_wx %>%
   arrange(site, year, DOY) %>% 
   # for now grouping by year to insure annual precip unchanged
   group_by(site, year) %>% 
-  mutate(PPT_manip = increase_intensity(PPT_cm))
+  mutate(PPT_manip = incr_dly_intensity(PPT_cm))
 
 manip_lookup <- c("PPT_cm" = "ambient", "PPT_manip" = "incr intensity")
 # yearly summaries
@@ -110,18 +110,33 @@ yrly_df <- comb_wx2 %>%
             ap = sum(PPT),
             # mean precip on days w/ precip
             mean_PPT = ap/n_days,
-            med_PPT = median(PPT[PPT > 0])) %>% 
+            med_PPT = median(PPT[PPT > 0]),
+            n_events = n_events(PPT, min_length = 1),
+            n_multi_events = n_events(PPT, min_length = 2),
+            max_event_length = max_event_length(PPT),
+            prop_multi_events = n_multi_events/n_events) %>% 
   mutate(manip = manip_lookup[manip])
-  
-# distributional figures --------------------------------------------------
+
+
+# figure functions --------------------------------------------------------
+
 wrap_site <- function(x) {
   fig1 <-  x + facet_wrap(~site) + 
     labs(subtitle = "by site")
   fig2 <- x + facet_wrap(~site, scales = "free") + 
     labs(subtitle = "by site, scales differ")
-
+  
   list(fig1, fig2)
 }
+
+density_rug <- function(x) {
+  list(geom_density(aes(.data[[x]])),
+       geom_rug(aes(.data[[x]]), sides = "b"))
+}
+  
+# distributional figures --------------------------------------------------
+
+
 
 pdf("figures/ambient_vs_intensity_distributions_v1.pdf")
 
@@ -137,7 +152,6 @@ g <- ggplot() +
 wrap_site(g)
 
 
-
 # distributions of yrly stats ---------------------------------------------
 
 g2 <- ggplot(yrly_df, aes(color = manip)) +
@@ -145,33 +159,54 @@ g2 <- ggplot(yrly_df, aes(color = manip)) +
   labs(subtitle = "by site",
        caption = "Distributions of yearly summaries")
 
-g3 <- g2 +
-  geom_density(aes(n_days)) +
-  geom_rug(aes(n_days), sides = "b") +
-  labs(title = "number of days per year with precip")
-
-wrap_site(g3) 
 
 g4 <- g2 +
-  geom_density(aes(med_PPT)) +
-  geom_rug(aes(med_PPT), sides = "b") +
+  density_rug("med_PPT") +
   labs(title = "Median daily PPT on days with PPT")
 
 wrap_site(g4)
 
 g5 <- g2 +
-  geom_density(aes(mean_PPT)) +
-  geom_rug(aes(mean_PPT), sides = "b") +
+  density_rug("mean_PPT") +
   labs(title = "Mean daily PPT on days with PPT")
 
 wrap_site(g5)
 
 g6 <- g2 +
-  geom_density(aes(ap)) +
-  geom_rug(aes(ap), sides = "b") +
+  density_rug("ap") +
   labs(title = "Annual precip",
        x = "Annual PPT (cm)")
 
 wrap_site(g6)
+
+g3 <- g2 +
+  density_rug("n_days") +
+  labs(title = "number of days per year with precip")
+
+wrap_site(g3) 
+
+g7 <- g2 +
+  density_rug("n_events") +
+  labs(title = "Number of precipitation events (periods with 1 or more consecutive rain days)",
+       x = "N events")
+
+wrap_site(g7) 
+
+g8 <- g2 +
+  density_rug("n_multi_events") +
+  labs(title = "Number of multiday (>=2 days) precip events",
+       x = "N events)")
+wrap_site(g8)
+g9 <- g2 +
+  density_rug("max_event_length") +
+  labs(title = "Maximum event length (number of consecutive days)",
+       x = "Days")
+wrap_site(g9)
+
+g10 <- g2 +
+  density_rug("prop_multi_events") +
+  labs(title = "Proportion of precip events that are multiday",
+       x = "Proportion")
+wrap_site(g10)
 
 dev.off()
