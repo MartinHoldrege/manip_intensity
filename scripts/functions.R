@@ -171,6 +171,47 @@ max_event_length <- function(x) {
   max(wet_lengths(x))
 }
 
+
+# create_event_df ---------------------------------------------------------
+
+#' Create dataframe with event numbers
+#'
+#' @param x numeric vector (daily precip)
+#'
+#' @return tibble with 2 columns, x (input vector), and event which is the
+#' event number corresponding to that value of x
+#'
+#' @examples
+#' create_event_df(c(0.1, 0.1, 0, 0.2)) 
+create_event_df <- function(x) {
+  stopifnot(is.numeric(x))
+  
+  # consider changing this threshold if necessary
+  is_wet <- x > 0
+  
+  # length of wet and dry runs
+  runs <- rle(is_wet)
+  
+  num_events <- sum(runs$values) # how many "TRUE"s
+  # lengths of consecutive runs of TRUE (ie wet day)
+  
+  # this if statement not really needed
+  event_seq <- if(num_events >= 1) {
+    1:num_events
+  } else {
+    0
+  }
+  
+  # replace logicals with event numbers
+  runs2 <- runs
+  runs2$values[runs2$values] <- event_seq
+  
+  x_events <- inverse.rle(runs2) # sequence w/ length x, giving event numbers
+  
+  df <- tibble(x = x, event = x_events)
+  df
+}
+
 # mean_event_size ---------------------------------------------------------
 
 #' Calculate mean event size
@@ -183,32 +224,14 @@ max_event_length <- function(x) {
 #'
 #' @examples
 #' mean_event_size(c(0.1, 0.1, 0, 0.2)) == 0.2
-#' mean_event_size(0)
+#' mean_event_size(0) == 0
 #' mean_event_size(rep(0.1, 10)) == 1
 mean_event_size <- function(x) {
-  stopifnot(is.numeric(x))
-  
-    # consider changing this threshold if necessary
-  is_wet <- x > 0
-  
-  # length of wet and dry runs
-  runs <- rle(is_wet)
-  
-  num_events <- sum(runs$values) # how many "TRUE"s
-  # lengths of consecutive runs of TRUE (ie wet day)
-  
-  if(num_events < 1) return(0) # code below won't work w/ 0 events
-  
-  event_seq <- 1:num_events
-  
-  # replace logicals with event numbers
-  runs2 <- runs
-  runs2$values[runs2$values] <- event_seq
-  
-  x_events <- inverse.rle(runs2) # sequence w/ length x, giving event numbers
-  
-  df <- tibble(x = x, event = x_events)
 
+  df <- create_event_df(x)
+  
+  if (all(df$x == 0)) return(0)
+  
   # mean size of events
   mean_size <- df %>% 
     filter(.data$x > 0) %>%  # just days of rain
@@ -216,28 +239,73 @@ mean_event_size <- function(x) {
     # summing across days of an event
     summarise(event_size = sum(.data$x), .groups = "drop") %>% 
     pull(event_size) %>% 
-    mean(.)
-  
+    mean()
+
   mean_size
 }
 
 
 # incr_event_intensity ----------------------------------------------------
 
+# NEXT STEPS: implement with various intensities
 
-# for now just a doubling of event size/ cutting frequency in half
+#' Increase event size intensity
+#'
+#' @param x numeric vector (daily precip)
+#'
+#' @return Currently (only) doubles event size, taking odd events adding to even
+#' events, where events are consecutive precip days
+#' @export
+#'
+#' @examples
+#' y1 <- incr_event_intensity(c(0.1, 0.1, 0, 1))
+#' all.equal(y1, c(0, 0, 0, 1.2))
+#' y2 <- incr_event_intensity(c(0.2, 0.1, 0.1, 0, 1, 2))
+#' all.equal(y2, c(0, 0, 0, 0, 1.2, 2.2))
+incr_event_intensity <- function(x) {
+  
+  df1 <- create_event_df(x)
+  
+  df1$is_event <- df1$x > 0
+  
+  # calculating length of each event
+  df2 <- df1 %>% 
+    group_by(.data$event) %>% 
+    mutate(event_length = sum(.data$is_event)) %>% 
+    ungroup()
+  
+  # size of individual events
+  size_df <- df2 %>% 
+    filter(.data$is_event) %>% 
+    group_by(.data$event) %>% 
+    summarize(event_size = sum(.data$x), .groups = "drop_last")
+  
+  n <- nrow(size_df) # number of events
+  n_rm <- floor(n/2) # number of events to remove
+  
+  # removing from odd events adding to even. subset to deal w/ odd total events
+  rm_event_nums <- seq(from = 1, to = n, by = 2)[1:n_rm]
 
-# pseudo code
-# make data frame with columns of original x, event number, event length
+  rm_df <- size_df %>% 
+    filter(.data$event %in% rm_event_nums) %>% 
+    mutate(add_event_num = .data$event + 1) %>%  # num of event to add to
+    rename(add_size = .data$event_size) %>% 
+    select(-.data$event)
+  
+  df3 <- df2 %>% 
+    left_join(rm_df, by = c("event" = "add_event_num")) %>% 
+    mutate(# adding previous event size evenly to each day of this event
+           x = ifelse(is.na(.data$add_size) | .data$add_size == 0,
+                      .data$x,
+                      .data$x + .data$add_size/.data$event_length)
+    )
+  
+  # events removed from become 0
+  df3$x[df3$event %in% rm_event_nums] <- 0
+  
+  return(df3$x)
+}
 
-# make separate named(?) vector of event sizes and there location
-# us this vector to add additional column of previous event size, ie this
-# vector offset by 1 ??
-
-#CONTINUE HERE
-# incr_event_intensity <- function(x) {
-#   
-# }
 
 
 
