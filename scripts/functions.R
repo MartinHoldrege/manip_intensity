@@ -247,14 +247,18 @@ mean_event_size <- function(x) {
 
 # incr_event_intensity ----------------------------------------------------
 
-# NEXT STEPS: implement with various intensities
 
 #' Increase event size intensity
 #'
 #' @param x numeric vector (daily precip)
+#' @param from positive integer. The number of events to take precip from
+#' and add to the following event(s)
+#' @param to positive integer. The number of events to add the removed precip
+#' to
 #'
-#' @return Currently (only) doubles event size, taking odd events adding to even
-#' events, where events are consecutive precip days
+#' @return numeric vector, same length as x. Precip events are considered
+#' 1 or more consecutive days with precip. Precip was removed from one or more (from)
+#' events and added to one or more (to) events, and this is repeated for all events 
 #' @export
 #'
 #' @examples
@@ -262,7 +266,25 @@ mean_event_size <- function(x) {
 #' all.equal(y1, c(0, 0, 0, 1.2))
 #' y2 <- incr_event_intensity(c(0.2, 0.1, 0.1, 0, 1, 2))
 #' all.equal(y2, c(0, 0, 0, 0, 1.2, 2.2))
-incr_event_intensity <- function(x) {
+#' # 2 events added to 1
+#' y3 <- incr_event_intensity(c(0.1, 0, 0.2, 0.1, 0, 1),
+#'                            from = 2, to = 1)
+#' all.equal(y3, c(0, 0, 0, 0, 0, 1.4))
+#' y4 <- incr_event_intensity(c(0.3, 0, 0.2, 0.1, 0, 1, 0, 1),
+#'                            from = 1, to = 2)
+#' all.equal(y4, c(0, 0, 0.3, 0.2, 0, 1.1, 0, 1))
+incr_event_intensity <- function(x, from = 1, to = 1) {
+  
+  stopifnot(from >= 1,
+            to >=1)
+  
+  if(from %% 1 != 0 | to %% 1 != 0) {
+    stop("from and to arguments need to be positive integers")
+  }
+  
+  if (from != 1 & to != 1) {
+    warning("at least one of from and to arguments should probably be 1")
+  }
   
   df1 <- create_event_df(x)
   
@@ -281,29 +303,52 @@ incr_event_intensity <- function(x) {
     summarize(event_size = sum(.data$x), .groups = "drop_last")
   
   n <- nrow(size_df) # number of events
-  n_rm <- floor(n/2) # number of events to remove
   
-  # removing from odd events adding to even. subset to deal w/ odd total events
-  rm_event_nums <- seq(from = 1, to = n, by = 2)[1:n_rm]
-
-  rm_df <- size_df %>% 
-    filter(.data$event %in% rm_event_nums) %>% 
-    mutate(add_event_num = .data$event + 1) %>%  # num of event to add to
-    rename(add_size = .data$event_size) %>% 
-    select(-.data$event)
+  cycle_len <- from + to # length of 1 cycle
+  n_cycles <- floor(n / (cycle_len)) # number of remove/add combos
+  
+  # one remove add cycle (TRUE is if remove)
+  one_cycle <- c(rep(TRUE, from), rep(FALSE, to))
+  
+  cycles <- rep(one_cycle, n_cycles) # cycles of remove (T) and add (F)
+  rm_event_nums = which(cycles)
+  # which events to add to
+  add_event_nums = which(!cycles)
+  
+  events_df <- tibble(
+    # these are the event nums that will be manipulated 
+    event_num = 1:(n_cycles*cycle_len),
+    is_rm = cycles, # remove from this event
+    cycle_num = rep(1:n_cycles, each = cycle_len)
+  )
   
   df3 <- df2 %>% 
-    left_join(rm_df, by = c("event" = "add_event_num")) %>% 
-    mutate(# adding previous event size evenly to each day of this event
-           x = ifelse(is.na(.data$add_size) | .data$add_size == 0,
-                      .data$x,
-                      .data$x + .data$add_size/.data$event_length)
-    )
+    left_join(events_df, by = c("event" = "event_num")) %>% 
+    group_by(cycle_num, is_rm) %>% 
+    mutate(
+      # number of days that are to be added to in that cycle
+      # (equal to event_length when to = 1)
+      cycle_add_len = sum(!is_rm))
+
+  # df of how much rain is being removed/added each cycle
+  rm_df <- df3 %>% 
+    filter(.data$is_rm) %>% 
+    group_by(.data$cycle_num, .data$is_rm) %>% 
+    summarize(add_size = sum(.data$x), # amount to be added 
+              .groups = "drop") %>% 
+    mutate(is_rm = FALSE) # reversing so can join with the add events
+
+  df4 <- df3 %>% 
+    left_join(rm_df, by = c("cycle_num", "is_rm")) %>% 
+    mutate(x = ifelse(!is_rm & !is.na(is_rm),
+                      # if add event add equal amount to each day
+                      .data$x + .data$add_size/.data$cycle_add_len,
+                      x))
   
   # events removed from become 0
-  df3$x[df3$event %in% rm_event_nums] <- 0
+  df4$x[df3$is_rm] <- 0
   
-  return(df3$x)
+  return(df4$x)
 }
 
 
