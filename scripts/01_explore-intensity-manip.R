@@ -75,9 +75,6 @@ hist(x[x>0], breaks = 20)
 sum(x>0)
 
 
-
-
-
 # extract all precip yrs/sites --------------------------------------------
 
 names(sw_weatherList) <- as.character(sites)
@@ -97,12 +94,19 @@ comb_wx2 <- comb_wx %>%
   arrange(site, year, DOY) %>% 
   # for now grouping by year to insure annual precip unchanged
   group_by(site, year) %>% 
-  mutate(PPT_manip = incr_dly_intensity(PPT_cm))
+  mutate(dly_2x_intensity = incr_dly_intensity(PPT_cm), # double daily intensity
+         event_2x_intensity = incr_event_intensity(PPT_cm)) # double event
 
-manip_lookup <- c("PPT_cm" = "ambient", "PPT_manip" = "incr intensity")
+manip_lookup <- c("PPT_cm" = "ambient", "dly_2x_intensity" = "dly 2x intensity",
+                  "event_2x_intensity" = "event 2x intensity")
+
+comb_wx_long <- comb_wx2 %>% 
+  pivot_longer(matches("PPT_cm|_intensity"), names_to = "manip", 
+               values_to = "PPT") %>% 
+  mutate(manip = manip_lookup[manip])
+
 # yearly summaries
-yrly_df <- comb_wx2 %>% 
-  pivot_longer(matches("^PPT"), names_to = "manip", values_to = "PPT") %>% 
+yrly_df <- comb_wx_long %>% 
   # yearly summaries
   group_by(site, year, manip) %>% 
   summarise(# number of days with precip
@@ -115,8 +119,9 @@ yrly_df <- comb_wx2 %>%
             n_events = n_events(PPT, min_length = 1),
             n_multi_events = n_events(PPT, min_length = 2),
             max_event_length = max_event_length(PPT),
-            prop_multi_events = n_multi_events/n_events) %>% 
-  mutate(manip = manip_lookup[manip])
+            prop_multi_events = n_multi_events/n_events,
+            mean_event_size = mean_event_size(PPT),
+            n_small = sum(PPT > 0 & PPT < 0.1)) # number of small events
 
 
 # figure functions --------------------------------------------------------
@@ -134,21 +139,19 @@ density_rug <- function(x) {
   list(geom_density(aes(.data[[x]])),
        geom_rug(aes(.data[[x]]), sides = "b"))
 }
-  
-# distributional figures --------------------------------------------------
 
+cols1 <- c("blue", "black", "red") 
+# distributional figures --------------------------------------------------
 
 
 pdf("figures/ambient_vs_intensity_distributions_v1.pdf")
 
-g <- ggplot() +
-  geom_density(data = comb_wx2[comb_wx2$PPT_manip > 0, ], 
-               mapping = aes(x = PPT_manip, color = "incr intensity")) +
-  geom_density(data = comb_wx2[comb_wx2$PPT_cm > 0, ], 
-               mapping = aes(x = PPT_cm, color = "ambient")) + 
+g <- ggplot(comb_wx_long[comb_wx_long$PPT > 0, ], 
+            aes(x = PPT, color = manip)) +
+  geom_density() +
   labs(x = "Daily PPT (cm)",
-       title = "Intensity increased by adding odd ppt days to even days") +
-  scale_color_manual(values = c("blue", "red"))
+       title = "Intensity increased by adding odd ppt days/events to evens") +
+  scale_color_manual(values =cols1)
 
 wrap_site(g)
 
@@ -156,7 +159,7 @@ wrap_site(g)
 # distributions of yrly stats ---------------------------------------------
 
 g2 <- ggplot(yrly_df, aes(color = manip)) +
-  scale_color_manual(values = c("blue", "red")) +
+  scale_color_manual(values = cols1) +
   labs(subtitle = "by site",
        caption = "Distributions of yearly summaries")
 
@@ -209,5 +212,12 @@ g10 <- g2 +
   labs(title = "Proportion of precip events that are multiday",
        x = "Proportion")
 wrap_site(g10)
+
+g11 <- g2 +
+  density_rug("mean_event_size") +
+  labs(title = "Mean event size (event = consecutive ppt days)",
+       x = "Mean event size (cm)")
+wrap_site(g11)
+
 
 dev.off()
