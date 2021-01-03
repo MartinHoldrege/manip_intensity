@@ -8,6 +8,7 @@
 
 library(tidyverse)
 library(DBI)
+library(precipr) # install from my github
 source("scripts/functions.R")
 theme_set(theme_classic())
 
