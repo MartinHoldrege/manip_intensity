@@ -139,6 +139,33 @@ yrly_df_all <- comb_wx_long %>%
 # only original (db) wx
 yrly_df <- yrly_df_all %>% 
   filter(!markov)
+
+# compare original and markov ---------------------------------------------
+
+comb_wx_long2 <- comb_wx_long %>% 
+  filter(manip %in% c("ambient", "event 2x intensity")) %>% 
+  select(-Tmax_C, -Tmin_C) %>% 
+  mutate(markov = FALSE) %>%  # not simulated by stepwat--ie from wx db
+  bind_rows(ppt_markov)
+
+yrly_df_all2 <- yrly_df_all %>% 
+  filter(manip %in% c("ambient", "event 2x intensity"))
+
+# monthly precip ----------------------------------------------------------
+
+# monthly mean ppt across years within a site. 
+monthly_ppt <- comb_wx_long2 %>% 
+  mutate(date = as.Date(DOY-1, origin = paste0(year, "-01-01")),
+         month = lubridate::month(date)) %>% 
+  group_by(year, month, site, manip, markov) %>% 
+  summarize(PPT = sum(PPT)) %>% 
+  group_by(month, site, manip, markov) %>% 
+  summarize(PPT_sd = sd(PPT),
+            PPT_m = mean(PPT),
+            PPT_med = median(PPT))
+  
+        
+  
 # figure functions --------------------------------------------------------
 
 if (!dir.exists("figures")) {
@@ -241,17 +268,10 @@ wrap_site(g11)
 
 dev.off()
 
-# compare original and markov ---------------------------------------------
 
-comb_wx_long2 <- comb_wx_long %>% 
-  filter(manip %in% c("ambient", "event 2x intensity")) %>% 
-  select(-Tmax_C, -Tmin_C) %>% 
-  mutate(markov = FALSE) %>%  # not simulated by stepwat--ie from wx db
-  bind_rows(ppt_markov)
+# figs--markov vs original ------------------------------------------------
 
-yrly_df_all2 <- yrly_df_all %>% 
-  filter(manip %in% c("ambient", "event 2x intensity"))
-  
+
 pdf("figures/original_vs_markov_distributions_v1.pdf")
 
 # * figs -- daily distributions -------------------------------------------
@@ -329,4 +349,23 @@ g <- g2 +
        x = "Mean event size (cm)")
 wrap_site(g)
 
+dev.off()
+
+# * figs--monthly mean ppt ------------------------------------------------
+pdf("figures/original_vs_markov_monthly_PPT_v1.pdf")
+
+p <- ggplot(monthly_ppt, aes(x = month, color = manip, linetype = markov)) +
+  facet_wrap(~site) +
+  scale_color_manual(values = cols2) +
+  scale_x_continuous(breaks = 1:12) 
+
+p +
+  geom_line(aes(y = PPT_m)) +
+  labs(y = "PPT (cm)",
+       subtitle = "Mean monthly precipitation")
+
+p +
+  geom_line(aes(y = PPT_med)) +
+  labs(y = "PPT (cm)",
+       subtitle = "Median monthly precipitation")
 dev.off()
