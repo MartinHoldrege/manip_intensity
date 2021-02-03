@@ -1,0 +1,6 @@
+
+# ignore everything except .gitignore in this folder--doing this b/ want to be able to version the folder structure
+# and you can't commit completely empty folder--see https://stackoverflow.com/questions/14541253/commit-empty-folder-structure-with-git
+
+*
+!.gitignore
