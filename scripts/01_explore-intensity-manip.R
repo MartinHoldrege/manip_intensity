@@ -172,15 +172,6 @@ if (!dir.exists("figures")) {
   dir.create("figures")
 }
 
-wrap_site <- function(x) {
-  fig1 <-  x + facet_wrap(~site) + 
-    labs(subtitle = "by site")
-  fig2 <- x + facet_wrap(~site, scales = "free") + 
-    labs(subtitle = "by site, scales differ")
-  
-  list(fig1, fig2)
-}
-
 density_rug <- function(x) {
   list(geom_density(aes(.data[[x]])),
        geom_rug(aes(.data[[x]]), sides = "b"))
