@@ -151,6 +151,29 @@ comb_wx_long2 <- comb_wx_long %>%
 yrly_df_all2 <- yrly_df_all %>% 
   filter(manip %in% c("ambient", "event 2x intensity"))
 
+
+# compare distributions by DOY --------------------------------------------
+# trying to see what family of distribution is being used by the weather generator
+# note, days without rain on the previous day are treated differently 
+# so seperating them
+
+# daily ambient data
+dly_amb <- comb_wx_long2 %>% 
+  # to reduce size of df
+  filter(manip == "ambient") %>% 
+  mutate(DOY = as.factor(DOY))
+
+# daily ppt greater than 0
+dly_amb_gt0 <- dly_amb %>% 
+  arrange(manip, markov, site, year, DOY) %>% 
+  group_by(manip, markov, site) %>% 
+  mutate(# was there ppt on previous
+         is_prev_wet = is_prev_wet(PPT)) %>% 
+  # first day in time series will have NA
+  filter(!is.na(.data$is_prev_wet), PPT > 0) %>% 
+  ungroup()
+
+
 # monthly precip ----------------------------------------------------------
 
 # monthly mean ppt across years within a site. 
@@ -277,8 +300,6 @@ ggplot(comb_wx_long2[comb_wx_long2$PPT > 0, ],
 
 # * figs -- yrly distributions -------------------------------------------
 
-# distributions of yrly stats ---------------------------------------------
-
 g2 <- ggplot(yrly_df_all2, aes(color = manip, linetype = markov)) +
   scale_color_manual(values = cols2) +
   labs(subtitle = "by site",
@@ -360,3 +381,17 @@ p +
   labs(y = "PPT (cm)",
        subtitle = "Median monthly precipitation")
 dev.off()
+
+
+# *figs distribution by doy -----------------------------------------------
+
+# Continue HERE
+# the point here is to understand whether the distribution of ppt 
+# on a given day is well represented by the weath generator
+
+dly_amb_gt0 %>% 
+  # don't want to plot all DOYs
+  filter(DOY %in% seq(from = 20, to = 360, by = 40), !is_prev_wet) %>% 
+  ggplot(aes(PPT, linetype = markov))+
+  geom_density() +
+  facet_grid(DOY~site, scales = 'free')

@@ -53,14 +53,22 @@ dly1 <- map(sw_weatherList, combine_scenarios,
   bind_rows(.id = "site") %>% 
   as_tibble() %>% 
   mutate(site = as.numeric(site)) %>% 
-  rename(PPT = PPT_cm)
+  rename(PPT = PPT_cm) %>% 
+  mutate(RCP = str_extract(scenario, "RCP\\d{2}"),
+         RCP = ifelse(scenario == "Current", "Current", RCP),
+         RCP = factor(RCP),
+         # reordering for better overplotting later
+         scenario = factor(scenario),
+         RCP = forcats::fct_rev(RCP),
+         scenario = forcats::fct_rev(scenario))
+
 
 # calculate intensity -----------------------------------------------------
 
 yrly1 <- dly1 %>% 
   select(-Tmax_C, -Tmin_C) %>% 
   # yearly summaries
-  group_by(site, scenario, year) %>% 
+  group_by(site, scenario, RCP, year) %>% 
   summarise(# number of days with precip
     n_days = sum(PPT > 0),
     # annual precip
@@ -72,9 +80,7 @@ yrly1 <- dly1 %>%
     max_event_length = max_event_length(PPT),
     mean_event_size = mean_event_size(PPT),
     n_small = sum(PPT > 0 & PPT < 0.1),
-    Rx1day = max(PPT)) %>%  # max event per year
-  mutate(RCP = str_extract(scenario, "RCP\\d{2}"),
-         RCP = ifelse(scenario == "Current", "Current", RCP))
+    Rx1day = max(PPT))  # max event per year
 
 # median values across gcm's in a given year
 yrly_rcp1 <- yrly1 %>% 
@@ -98,18 +104,27 @@ var_names <- c(n_days = "number of wet days",
 
 vars <- names(var_names)
 
+base <- function() {
+  list( scale_color_manual(values = c("RCP85" = "red", "Current" = "blue")))
+}
+
 pdf("figures/current-vs-GCM_intensity.pdf")
 
-map2(vars, var_names, function(var, name) {
-  df <- yrly1
-  # reordering factors so overplotting is better.
+# daily ppt distribution
+dly1 %>% 
+  filter(PPT > 0) %>% 
+  ggplot(aes(PPT, color = RCP, group = scenario)) +
+  geom_density() +
+  facet_wrap(~site) +
+  labs(x = "daily PPT (cm)",
+       title = "Daily PPT on days with PPT > 0",
+       subtitle = "unaltered precipitation intensity",
+       caption = "Separate lines shown for each GCM") +
+  base()
 
-  df$scenario <- factor(df$scenario) %>% 
-    forcats::fct_rev()
-  df$RCP <- factor(df$RCP) %>% 
-    forcats::fct_rev()
-  
-  ggplot(df, aes(x = .data[[var]], color = RCP,
+# distributions of yearly summary stats
+map2(vars, var_names, function(var, name) {
+  ggplot(yrly1, aes(x = .data[[var]], color = RCP,
                     group = scenario)) +
     geom_density() +
     labs(x = name,
@@ -117,7 +132,7 @@ map2(vars, var_names, function(var, name) {
          subtitle = "By Site. Only 'ambient' intensity shown (i.e. original weather database data)",
          caption = "Distributions of yearly summary staistics.\nIndividuals lines represent separate lines for each GCM") +
     facet_wrap(~site) +
-    scale_color_manual(values = c("RCP85" = "red", "Current" = "blue"))
+    base()
 })
 
 dev.off()

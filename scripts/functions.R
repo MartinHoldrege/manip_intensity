@@ -101,6 +101,30 @@ extract_data2<-function(site_to_extract=NULL, climate.conditions)
 }
 
 
+# prev_wet ------------------------------------------------------------
+
+
+#' Was previous day wet
+#'
+#' @param x numeric vector
+#'
+#' @return logical vector
+#' @export
+#'
+#' @examples
+#' x <- c(0, 1, 2, 2, 0, 0, 1)
+#' is_prev_wet(x)
+is_prev_wet <- function(x) {
+  stopifnot(is.numeric(x))
+  n <- length(x)
+  # previous value (ie. i-1)
+  prev <- c(NA, x[1:(n-1)])
+  # is previous value >0
+  out <- prev > 0
+  out
+}
+
+
 # figure functions --------------------------------------------------------
 
 # create two facet wrapped versions of the figure
@@ -112,3 +136,5 @@ wrap_site <- function(x) {
   
   list(fig1, fig2)
 }
+
+
