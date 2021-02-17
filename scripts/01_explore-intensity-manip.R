@@ -7,6 +7,7 @@
 # dependencies ------------------------------------------------------------
 
 library(tidyverse)
+library(lubridate)
 library(DBI)
 library(precipr) # devtools::install_github("MartinHoldrege/precipr")
 source("scripts/functions.R")
@@ -97,6 +98,15 @@ comb_wx <- map(sw_weatherList, function(x) {
   bind_rows(.id = "site") %>% 
   mutate(site = as.numeric(site))
 
+# saving file of just site 5 for code testing
+comb_wx %>% 
+  filter(site == 5) %>% 
+  mutate(first = paste0(year, "-01-01"),
+         date = as.Date((DOY-1), origin = first),
+         month = month(date),
+         day = mday(date)) %>% 
+  select(site, year, month, day, date, everything(), -first) %>% 
+  write_csv("data-raw/wx_ambient_site-5.csv")
 
 # manipulate precip -------------------------------------------------------
 

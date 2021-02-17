@@ -94,7 +94,7 @@ obsAtts <- calculateAttributes(tank_obs, attSel)
 
 # Note: fit is terrible. total ppt not adjusted appropriately.
 
-P <- sim[["Rep1"]][["Target3"]][["P"]][["sim"]]   
+P <- sim[["Rep1"]][["Target1"]][["P"]][["sim"]]   
 simData <- cbind(sim[["simDates"]], P)
 simAtts <- calculateAttributes(simData, attSel)
 simAtts
