@@ -8,6 +8,12 @@ library(dplyr)
 data <- readr::read_csv("data-raw/wx_ambient_site-5.csv")
 x <- data$PPT_cm[data$month == 1]
 
+# To Do
+# checks: monthly SD, and mean temp, and precip
+# consecutive rain days
+# create wet day precip adjustment
+# adjust all temps to match long term mean 
+# (i.e. to compensate for changes in wet/dry days)
 
 # precipitation functions -------------------------------------------------
 
@@ -149,6 +155,45 @@ markov_chain <- function(params,
 
 #' Title
 #'
+#' @param params 
+#' @param mean_mult 
+#' @param sd_mult 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' mean_mult <- 1.5
+#' sd_mult <- 2
+#' params <- monthly_ppt_params(data)
+#' params2 <- adjust_params(params, mean_mult, sd_mult)
+#' df <- markov_chain(params2)
+#' df2 <- generate_events(df, params2)
+#' # make histograms
+#' breaks <- seq(from = 0, to =10, by = 0.25) 
+#' hist(df2$PPT_cm[df2$PPT_cm > 0], breaks = breaks)
+#' hist(data$PPT_cm[data$PPT_cm > 0],breaks = breaks)
+adjust_params <- function(params, mean_mult, sd_mult) {
+  
+  stopifnot(is.data.frame(params),
+            c("P_W_W", "P_W_D", "PPT_mean", "PPT_SD") %in% names(params)
+  )
+  
+  # probability multiplier (to keep totals the same)
+  P_mult <- 1/mean_mult
+  
+  # adjust mean, sd and probabilities, goal is that totals remain the same
+  params2 <- params %>% 
+    mutate(P_W_W = .data$P_W_W*P_mult,
+           P_W_D = .data$P_W_D*P_mult,
+           PPT_mean = .data$PPT_mean*mean_mult,
+           PPT_SD = .data$PPT_SD*sd_mult)
+  
+  params2
+}
+
+#' Title
+#'
 #' @param df 
 #' @param params 
 #'
@@ -186,44 +231,7 @@ generate_events <- function(df, params) {
 }
 
 
-#' Title
-#'
-#' @param params 
-#' @param mean_mult 
-#' @param sd_mult 
-#'
-#' @return
-#' @export
-#'
-#' @examples
-#' mean_mult <- 1.5
-#' sd_mult <- 2
-#' params <- monthly_ppt_params(data)
-#' params2 <- adjust_params(params, mean_mult, sd_mult)
-#' df <- markov_chain(params2)
-#' df2 <- generate_events(df, params2)
-#' # make histograms
-#' breaks <- seq(from = 0, to =10, by = 0.25) 
-#' hist(df2$PPT_cm[df2$PPT_cm > 0], breaks = breaks)
-#' hist(data$PPT_cm[data$PPT_cm > 0],breaks = breaks)
-adjust_params <- function(params, mean_mult, sd_mult) {
-  
-  stopifnot(is.data.frame(params),
-            c("P_W_W", "P_W_D", "PPT_mean", "PPT_SD") %in% names(params)
-            )
-  
-  # probability multiplier (to keep totals the same)
-  P_mult <- 1/mean_mult
-  
-  # adjust mean, sd and probabilities, goal is that totals remain the same
-  params2 <- params %>% 
-    mutate(P_W_W = .data$P_W_W*P_mult,
-           P_W_D = .data$P_W_D*P_mult,
-           PPT_mean = .data$PPT_mean*mean_mult,
-           PPT_SD = .data$PPT_SD*sd_mult)
-  
-  params2
-}
+
 
 
 # misc functions ----------------------------------------------------------
@@ -416,13 +424,13 @@ temp_wk_list <- function(data) {
 
 
 
-#' Title
+#' generate temperature
 #'
-#' @param wk_list 
-#' @param start_date 
-#' @param end_date 
+#' @param wk_list list of weekly parameters from temp_wk_list() function
+#' @param start_date "yyy-mm-dd" string for start date of simulated temperature
+#' @param end_date "yyy-mm-dd" string for end date of simulated temperature
 #'
-#' @return
+#' @return dataframe, that includes simulated minimum and maximum temperature
 #' @export
 #'
 #' @examples
@@ -479,8 +487,42 @@ generate_temp <- function(wk_list,
     df1$Tmax_C[(t+1)] <- xt1[1,]
     df1$Tmin_C[(t+1)] <- xt1[2,]
   }
+  
+  # fix Tmin/max
+  # on rare occasions a tmin greater than a tmax can be generated
+  # in those cases the two will be flipped
+  is_flipped <- df1$Tmax_C < df1$Tmin_C
+  df1$Tmin_C <- ifelse(is_flipped, df1$Tmax_C, df1$Tmin_C)
+  df1$Tmax_C <- ifelse(is_flipped, df1$Tmin_C, df1$Tmax_C)
+  
   df1
   
 }
 
+#' Title
+#'
+#' @param ppt_df 
+#' @param temp_df 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' params <- monthly_ppt_params(data)
+#' df1 <- markov_chain(params,  start_date = "1980-01-01", end_date = "1980-12-31")
+#' ppt_df <- generate_events(df1, params)
+#' wk_list <- temp_wk_list(data)
+#' temp_df <- generate_temp(wk_list, start_date = "1980-01-01", end_date = "1980-12-31")
+join_temp_ppt <- function(ppt_df, temp_df) {
+    out <- inner_join(ppt_df, temp_df, by = "date")
+  
+  # very strict to catch errors. could change
+  stopifnot(nrow(out) == nrow(temp_df))
+  
+  out
+}
 
+adjust_temp <- function(ppt_df, temp_df, wk_list) {
+  df1 <- join_temp_ppt(ppt_df, temp_df)
+  # continue here
+}
