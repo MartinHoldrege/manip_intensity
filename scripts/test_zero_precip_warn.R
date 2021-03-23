@@ -184,6 +184,9 @@ binom.test(x = num_warnings, n = num_all_yrs, p = exp_all_prob)
 
 num_all_yrs*exp_all_prob
 num_warnings
+
+# range of expected number of warnings (99% prediction interval)
+qbinom(c(0.005, 0.5, 0.995), size = num_all_yrs, prob = exp_all_prob)
 # figures -----------------------------------------------------------------
 
 pdf("figures/probabilities_no-gs-ppt.pdf")
