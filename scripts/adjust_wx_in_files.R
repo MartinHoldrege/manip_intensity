@@ -5,63 +5,36 @@
 # purpose is to try and adjust the the two .in files for the stepwat2
 # weather generator to increase precip intensity. 
 
-# Continue here--this script hasn't really be started even
 # dependencies ------------------------------------------------------------
 
-library(rSOILWAT2) # 
+library(rSOILWAT2) 
 library(tidyverse)
 
-# -------------------------------------------------------------------------
 
-res1 <- dbW_estimate_WGen_coefs(rSOILWAT2::weatherData)
+# example data ------------------------------------------------------------
+
 wdata <- data.frame(dbW_weatherData_to_dataframe(rSOILWAT2::weatherData))
 
-# illustration of the bug in rSOILWAT2::dbW_estimate_WGen_coefs
 
-# make sure the correct verstion of rSOILWAT2 is being used (ie the bug fix)
-res2 <- dbW_estimate_WGen_coefs(wdata, propagate_NAs = FALSE) # default
-head(res2[[1]]) # no CF_ for dry days
-res2 <- dbW_estimate_WGen_coefs(wdata, propagate_NAs = TRUE)
-head(res2[[1]])
+# create .in files --------------------------------------------------------
 
-wdata <- precipr::wx_data %>% 
-  rename(Year = year) %>% 
-  select(Year, DOY, Tmax_C, Tmin_C, PPT_cm)
+coeffs <- dbW_estimate_WGen_coefs(wdata, propagate_NAs = FALSE)
+head(coeffs[[1]])
 
-# wdata$PPT_cm[wdata$DOY == 1] <- 0 # tested the effect of no rain days
+# simulate some weather data ----------------------------------------------
 
+x_empty <- list(new("swWeatherData")) # empty weather object
 
-# The bias from imputation shouldn't actually be a problem. If 
-# no rain days for a given DOY then mean and sd are 0. 
-# sd becomes NA with only one rain day. Imputing that sd
-# won't cause a directional shift in total precip, and seems totally appropriate. 
-res1 <- dbW_estimate_WGen_coefs(wdata, imputation_type = "mean")
+# generate weather just based on the input coeffs
+wout1 <- dbW_generateWeather(x_empty, years = 2000:2055,
+                             wgen_coeffs = coeffs, seed = 123)
 
-res1[[1]]
-
-# MarkovWeatherFileGenerator.R is already doing this:
-# res <- rSOILWAT2::dbW_estimate_WGen_coefs(sw_weatherList[[s]][[h]], imputation_type = "mean",
-#                                           propagate_NAs = FALSE)
+# generate figures that compare reference weather to simulated weather
+compare_weather(ref_weather = as.matrix(wdata), 
+                weather = dbW_weatherData_to_dataframe(wout1),
+                N = 1, 
+                path = "figures/compare_wgen/", 
+                tag = "Example1-WeatherGenerator")
 
 
-
-
-# these are the DOYS throwing errors, they all just have 1 day of rain across
-# 30 years. 
-
-wdata %>% 
-  filter(DOY %in% c(3, 7, 12, 14, 18, 19, 27, 32, 35, 51, 70, 134, 205, 213, 
-                    231, 232, 239, 271, 283, 297, 298, 299, 301, 304, 306, 
-                    314, 317, 324, 335, 339, 343, 345, 353, 356, 359) 
-         & PPT_cm > 0) %>% 
-  arrange(DOY)
-
-rSOILWAT2::week
-
-
-
-res2 <- dbW_estimate_WGen_coefs(wdata)
-?rSOILWAT2::print_mkv_files()
-sw_in <- rSOILWAT2::sw_exampleData
-swMarkov_Prob(sw_in) <- res2[["mkv_doy"]]
-swMarkov_Conv(sw_in) <- res2[["mkv_woy"]]
+# NEXT: create modified coeffs and then compa
