@@ -138,3 +138,11 @@ wrap_site <- function(x) {
 }
 
 
+# doy2month ---------------------------------------------------------------
+
+doy2month <- function(year, doy) {
+  # date is 0 based index
+  date <- as.Date(doy - 1, origin = paste0(year, "-01-01"))
+  month <- lubridate::month(date)
+  month
+}
