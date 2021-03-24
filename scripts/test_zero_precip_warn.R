@@ -5,7 +5,8 @@
 # Purpose is to simulate weather for a site where the following type of
 # warnings (when running rSFSTEP2) were thrown, to see what is going on:
 # WARNING: Zero growing season precipitation in year = 60 of iteration = 5
-
+# additional here I calculate the probability of having growing seasons
+# with zero precip based on the coeff files. 
 
 # dependencies ------------------------------------------------------------
 
@@ -108,8 +109,9 @@ prod(p_D_D)
 
 sites <- 1:200
 
-# probability of no growing season ppt for each site
-prob_no_ppt <- map_dbl(sites, function(site) {
+# growing season markov doy files
+gs_mkv_doy <- map(sites, function(site) {
+
   wdata <- dbW_getWeatherData(Site_id = site)
   wdata_df <- wdata %>% 
     dbW_weatherData_to_dataframe() %>% 
@@ -117,6 +119,7 @@ prob_no_ppt <- map_dbl(sites, function(site) {
   coeffs <- dbW_estimate_WGen_coefs(wdata_df, propagate_NAs = FALSE,
                                     imputation_type = "mean")
   # months that are the growing season
+
   gsmonths <- wdata_df %>% 
     mutate(month = doy2month(Year, DOY),
            # growing season is based on mean temp (i assume this is how its 
@@ -127,22 +130,32 @@ prob_no_ppt <- map_dbl(sites, function(site) {
     # cuttoff for growing season
     filter(Tmean >= 4.4) %>% 
     pull(month)
-  
+
   # coeffs during the growing season
-  gs_coeffs <- coeffs[[2]] %>% 
+  gs_coeffs <- coeffs$mkv_doy %>% 
     # just putting in random year to make doy2month fun work
-    mutate(month = doy2month(year = 2010, DOY)) %>% 
-    filter(month %in% gsmonths)
+    dplyr::mutate(month = doy2month(year = 2010, .data$DOY)) %>% 
+    dplyr::filter(.data$month %in% gsmonths)
   
-  # probability of dry day given previous day was dry
-  p_D_D <- 1 - gs_coeffs$p_W_D
-  # probability of each day being dry
-  # I think this calculation is correct, as long as you assume the first
-  # day of the season was dry
-  out <- prod(p_D_D)
-  out
+  gs_coeffs
 })
 
+
+prob_no_ppt <- map_dbl(gs_mkv_doy, function(x) {
+  # if it rains, probability of drawing a value from normal distribution
+  # that is greater than 0 (if - value drawn then it is replace w/ 0),
+  # thereby creating a dry day.
+  prob_gt0 <- pnorm(0, mean = x$PPT_avg, sd = x$PPT_sd, lower.tail = FALSE)
+  
+  # corrected Prob wet given prev day dry
+  P_W_D_cor <- x$p_W_D*prob_gt0
+  # prob dry 
+  P_D_D_cor <- 1 - P_W_D_cor
+  
+  # prob whole growing season is dry
+  out <- prod(P_D_D_cor)
+  out
+})
 hist(prob_no_ppt)
 
 prob_no_ppt_df <- tibble(prob_no_ppt = prob_no_ppt,
@@ -187,6 +200,7 @@ num_warnings
 
 # range of expected number of warnings (99% prediction interval)
 qbinom(c(0.005, 0.5, 0.995), size = num_all_yrs, prob = exp_all_prob)
+
 # figures -----------------------------------------------------------------
 
 pdf("figures/probabilities_no-gs-ppt.pdf")

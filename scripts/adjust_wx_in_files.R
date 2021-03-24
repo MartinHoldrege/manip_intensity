@@ -10,6 +10,11 @@
 library(rSOILWAT2) 
 library(tidyverse)
 
+# connect to database -----------------------------------------------------
+
+db_path <- "../dbWeather/dbWeatherData_STEPWAT2_200sites.sqlite3"
+
+rSOILWAT2::dbW_setConnection(db_path, check_version = TRUE)
 
 # example data ------------------------------------------------------------
 
@@ -98,3 +103,19 @@ compare_weather(ref_weather = as.matrix(wdata),
                 N = 1, 
                 path = "figures/compare_wgen/", 
                 tag = "test_intensity")
+
+# create coeffs for each site ---------------------------------------------
+
+sites <- 1:200
+
+# list of coeffs for each site
+coeff_l <- map(sites, function(site) {
+  wdata <- dbW_getWeatherData(Site_id = site)
+  wdata_df <- wdata %>% 
+    dbW_weatherData_to_dataframe() %>% 
+    as.data.frame()
+  # markov files
+  out <- dbW_estimate_WGen_coefs(wdata_df, propagate_NAs = FALSE,
+                                 imputation_type = "mean")
+  out
+})
