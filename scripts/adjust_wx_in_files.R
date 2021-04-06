@@ -5,11 +5,17 @@
 # purpose is to try and adjust the the two .in files for the stepwat2
 # weather generator to increase precip intensity. 
 
+# NEXT: consider figuring out issue with doy 366 in mkv_doy.in file
+# try determing the issue with changing sd, and why expected
+# value isn't perfect. 
+
+
 # dependencies ------------------------------------------------------------
 
 library(rSOILWAT2) 
 library(tidyverse)
-
+library(precipr)
+source("scripts/functions.R")
 
 # read in observed map data -----------------------------------------------
 
@@ -30,7 +36,7 @@ wdata <- data.frame(dbW_weatherData_to_dataframe(rSOILWAT2::weatherData))
 # create .in files --------------------------------------------------------
 
 coeffs <- dbW_estimate_WGen_coefs(wdata, propagate_NAs = FALSE)
-head(coeffs[[1]])
+head(coeffs[[2]])
 
 # simulate some weather data ----------------------------------------------
 years <- 2000:2300
@@ -38,7 +44,10 @@ x_empty <- list(new("swWeatherData")) # empty weather object
 
 # generate weather just based on the input coeffs
 wout1 <- dbW_generateWeather(x_empty, years = years,
-                             wgen_coeffs = coeffs, seed = 123)
+                             wgen_coeffs = coeffs)
+calc_map(wout1) # MAP of simulated ppt
+calc_map(wdata) # map of original data
+expected_ppt(coeffs) # expected map based on markov file
 
 # generate figures that compare reference weather to simulated weather
 compare_weather(ref_weather = as.matrix(wdata), 
@@ -53,16 +62,22 @@ compare_weather(ref_weather = as.matrix(wdata),
 # adjusting coeffs to double ppt intensity
 coeffs_2x <- precipr::adjust_mkv_in(mkv_in = coeffs, data = wdata,
                                     mean_mult = 2,
-                                    adjust_sd = FALSE)
-
+                                    adjust_sd = TRUE)
+# this issues suggests that both expected_ppt and adjust_mkv_in functions
+# have issues!
+expected_ppt(coeffs_2x); expected_ppt(coeffs)
 # compare coeffs
 head(coeffs$mkv_doy)
 head(coeffs_2x$mkv_doy)
 
 
-wout2 <- dbW_generateWeather(x_empty, years = years,
-                             wgen_coeffs = coeffs_2x, seed = 1)
+wout2 <- dbW_generateWeather(x_empty, years = 2000:2500,
+                             wgen_coeffs = coeffs_2x)
+# this difference shows that expected_ppt still isn't being calculated
+# correctly
+calc_map(wout2); expected_ppt(coeffs_2x)  
 
+calc_map(wdata); expected_ppt(coeffs) # should be exactly(?) the same
 compare_weather(ref_weather = as.matrix(wdata), 
                 weather = dbW_weatherData_to_dataframe(wout2),
                 N = 1, 
@@ -93,50 +108,18 @@ compare_weather(ref_weather = as.matrix(wdata),
 # }
 
 
-
 # testing effects of changing coeffs
-coeffs_test <- precipr::adjust_mkv_in(mkv_in = coeffs, data = wdata,
-                                      mean_mult = 2, adjust_sd = TRUE)
-coeffs_test$mkv_doy$PPT_sd/coeffs$mkv_doy$PPT_sd
+coeffs_test <- coeffs
+coeffs_test$mkv_doy$PPT_sd <- coeffs$mkv_doy$PPT_sd*2
 wout3 <- dbW_generateWeather(x_empty, years = years,
-                             wgen_coeffs = coeffs_test, seed = 2)
+                             wgen_coeffs = coeffs_test)
+calc_map(wout3)
+expected_ppt(coeffs_test)
 compare_weather(ref_weather = as.matrix(wdata), 
                 weather = dbW_weatherData_to_dataframe(wout3),
                 N = 1, 
                 path = "figures/compare_wgen/", 
                 tag = "test_intensity")
-
-## examining issues regarding expected values on given days
-# here just calculated expected on days given previous day was dry. But 
-# think the logic holds either way
-
-# if it rains, probability of drawing a value from normal distribution
-# that is greater than 0 (if - value drawn then it is replace w/ 0),
-# thereby creating a dry day.
-
-# expected value of ppt
-expected_ppt <- function(coeffs) {
-  prob_gt0 <- with(coeffs$mkv_doy,
-                   pnorm(0, mean = PPT_avg, sd = PPT_sd, lower.tail = FALSE))
-  
-  with(coeffs$mkv_doy,
-       pnorm(0, mean = PPT_avg*2, sd = PPT_sd*15, lower.tail = TRUE))[1:5]
-  # corrected Prob wet given prev day dry
-  P_W_D_cor <- coeffs$mkv_doy$p_W_D*prob_gt0
-
-  # expected values on dry days
-  ex <- P_W_D_cor*truncnorm::etruncnorm(a = 0, b = Inf,
-                                        mean = coeffs$mkv_doy$PPT_avg,
-                                        sd = coeffs$mkv_doy$PPT_sd)
-  sum(ex) # expected total (if not consecutive wet days)
-}
-
-# doubling sd and avg while cutting in half P_W_D
-# should create same expected values (it does according to this calculation
-# but isn't in the wgen)
-expected_ppt(coeffs)
-expected_ppt(coeffs_test)
-
 
 # create coeffs for each site ---------------------------------------------
 
@@ -167,8 +150,9 @@ coeff_l <- map(sites, function(site) {
 z0 <- map_dbl(coeff_l, function(x) {
   z_vec <- (0 - x$mkv_doy$PPT_avg)/x$mkv_doy$PPT_sd # z score of 0
   z_vec[!is.finite(z_vec)] <- NA
-  # mean z weighted by rough approximation of the expected ppt on a given day
-  out <- weighted.mean(z_vec, w = x$mkv_doy$p_W_W*x$mkv_doy$p_W_D*x$mkv_doy$PPT_avg, 
+  # mean z weighted by approximation of the expected ppt on a given day
+  p_W <- calc_p_W(x$mkv_doy)
+  out <- weighted.mean(z_vec, w = p_W*x$mkv_doy$PPT_avg, 
                        na.rm = TRUE)
   out
 })
@@ -183,24 +167,60 @@ map_obs <- map_dbl(coeff_l, function(x) x$map_obs) %>%
   tibble(map_obs = .,
          site = sites)
 
+# expected map based on markov file and understanding of wgen
+map_obs$map_exp <- map_dbl(coeff_l, expected_ppt)
+
 map <- map_sim %>% 
   rename(map_sim = MAP) %>% 
   left_join(map_obs, by = "site") %>% 
   arrange(site) %>% 
   mutate(z0 = z0,
          map_diff = map_sim - map_obs,
-         map_diff_perc = map_diff/map_obs*100)
+         map_diff_perc = map_diff/map_obs*100,
+         map_exp_diff = map_exp - map_obs)
 
 
 hist(map$map_diff_perc)
 plot(map$map_diff_perc ~ map$z0)
+
+# simulated and expected map should be same, if expected_ppt function
+# were actually appropriately calculating expected ppt. it seems that it is 
+# not. 
+with(map, plot(map_exp~map_sim)); abline(0, 1)
+with(map, plot(map_exp~map_obs)); abline(0, 1)
+with(map, hist((map_exp_diff)/map_obs*100)) # % difference between observed and expected map
 mean(map$map_diff)
 mean(map$map_diff_perc)
 median(map$map_diff)
 
-# I would expect a strong positive relationship between z0  and map_diff
-# but I'm not seeing. My understanding of the wgen also doesn't explain
-# why so many sites have simulated map lower than observed map
-lm(map$map_diff_perc ~ map$z0) %>% 
-  summary()
+# site for which expected map farthest off
+filter(map, abs(map_exp_diff) == max(abs(map_exp_diff)))
+
+# CONTINUE--just trying to figure out what the difference is 
+# between coeffs were expected vals exactly match observed map
+# and those that don't
+
+good_exp <- map %>% 
+  filter(map_exp_diff == 0) %>% 
+  pull(site)
+
+coeff_l[[good_exp[1]]]$mkv_doy$PPT_avg %>% 
+  pull() %>% 
+  sum()
+
+check<- map_dbl(coeff_l, function(x) {
+  sum(x$mkv_doy$PPT_avg > 0 & x$mkv_doy$PPT_sd == 0)
+  
+})
+which(check == 0)
+good_exp
+coeff_l[[good_exp[1]]]$mkv_doy %>% View()
+View(coeff_l[[1]]$mkv_doy)
+# very strangely p_W_W for doy 366 is always 1 and p_W_D for doy 366 is always
+# 0, strange, not sure why! It's possible that it has something to do with 
+# summing across NAs?. Turns out that it is becuase in the weather
+# data base doy 366 is always just a repeat of doy 365. ie if 365 was
+# wet then 366 must also be wet. 
+
+map(coeff_l[1:10], function(x) tail(x$mkv_doy))
 
