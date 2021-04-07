@@ -5,9 +5,6 @@
 # purpose is to try and adjust the the two .in files for the stepwat2
 # weather generator to increase precip intensity. 
 
-# NEXT: consider figuring out issue with doy 366 in mkv_doy.in file
-# try determing the issue with changing sd, and why expected
-# value isn't perfect. 
 
 
 # dependencies ------------------------------------------------------------
@@ -135,8 +132,6 @@ map_obs <- map_dbl(coeff_l, function(x) x$map_obs) %>%
          site = sites)
 
 # expected map based on markov file and understanding of wgen
-# STOP: Continue here--problem is that for some NAN is being returen
-# form map_exp
 map_obs$map_exp <- map_dbl(coeff_l, expected_ppt, adjust_for_truncnorm = TRUE)
 
 
