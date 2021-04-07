@@ -149,24 +149,4 @@ doy2month <- function(year, doy) {
 
 
 
-# calculate map -----------------------------------------------------------
 
-
-calc_map <- function(wout) {
-  # calculate mean annual ppt
-  
-  # allowing dataframe or weatherdata list
-  df <- if (is.data.frame(wout)) {
-    wout
-  } else {
-    wout %>% 
-      rSOILWAT2::dbW_weatherData_to_dataframe() %>% 
-      as.data.frame() 
-  }
-  out <- df %>% 
-    group_by(.data$Year) %>% 
-    summarise(PPT_cm = sum(.data$PPT_cm), .groups = "drop") %>% 
-    pull(PPT_cm) %>% 
-    mean()
-  out
-}
