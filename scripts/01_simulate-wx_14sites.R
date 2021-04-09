@@ -57,6 +57,14 @@ exp_diffs <- map_dbl(coeff_l, function(x) {
 })
 exp_diffs
 max(exp_diffs)
+
+exp_nwet_2x <- map_dbl(coeff_l, function(x) {
+  precipr::expected_nwet(x$coeffs_2x, adjust_for_truncnorm = TRUE)
+})
+exp_map_2x <- map_dbl(coeff_l, function(x) {
+  precipr::expected_ppt(x$coeffs_2x, adjust_for_truncnorm = TRUE)
+})
+exp_map_2x/exp_nwet_2x
 # simulate wx -------------------------------------------------------------
 
 out_path <- "../sitedata/ppt/markov_ppt_14sites_20210407.csv"
@@ -78,7 +86,7 @@ x_empty <- list(new("swWeatherData")) # empty weather object
 # * ambient intensity -----------------------------------------------------
 
 # generate weather just based on the input coeffs
-seed <- 1234
+seed <- 12345
 map2(coeff_l, sites, function(x, site) {
     wout1 <- dbW_generateWeather(x_empty, years = years,
                                  wgen_coeffs = x$coeffs_ambient,

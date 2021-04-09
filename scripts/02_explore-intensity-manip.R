@@ -177,13 +177,16 @@ monthly_ppt <- comb_wx_long2 %>%
 # mean_annual_diffs -------------------------------------------------------
 # mean diffs of temp and precip
         
-diffs_mean_annual <- yrly_df_all %>% 
+mean_annual <- yrly_df_all %>% 
   filter(!str_detect(manip, "dly|event")) %>% 
   group_by(site, manip, markov) %>% 
   summarize(map = mean(ap),
+            ap_sd = sd(ap),
             Tmax = mean(mean_Tmax),
             Tmin = mean(mean_Tmin),
-            .groups = "drop") %>% 
+            .groups = "drop") 
+
+diffs_mean_annua <- mean_annual%>% 
   mutate(manip = str_replace(manip, " ", "_"),
          manip_markov = paste(manip, markov, sep = "_")) %>% 
   select(-manip, -markov) %>% 
@@ -438,7 +441,7 @@ diff_figs <- function(data,
 }
 
 
-pdf("figures/original_vs_markov_mean_annual_v2.pdf")
+pdf("figures/original_vs_markov_mean_annual_v3.pdf")
 diff_figs(data = diffs_mean_annual,
           orig_amb = "map_orig_amb_diff",
           orig_2x = "map_orig_2x_diff") +
@@ -466,3 +469,10 @@ dly_amb_gt0 %>%
   ggplot(aes(PPT, linetype = markov))+
   geom_density() +
   facet_grid(DOY~site, scales = 'free')
+
+
+# misc  -------------------------------------------------------------------
+
+mean_annual %>% 
+  filter(manip == "2x intensity") %>% 
+  filter(ap_sd == max(ap_sd))
