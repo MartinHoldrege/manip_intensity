@@ -4,6 +4,12 @@
 
 # First stab at manipulating precipitation intensity from the wx database.
 
+# NEXT: see why MAP of some sites is on with 2x intensity
+# Also adjust colors (naming cols2 vector caused problems, 
+# maybe name vector further down instead)
+# figures/original_vs_markov_distributions_v2.pdf needs to be updated
+# to make figures of adjusted coeff simulated values instead
+
 # dependencies ------------------------------------------------------------
 
 library(tidyverse)
@@ -213,7 +219,7 @@ density_rug <- function(x) {
 
 cols1 <- c("blue", "black", "red") 
 cols2 <- c("blue", "red")
-names(cols2) <- c("ambient", "2x intensity")
+# names(cols2) <- c("ambient", "2x intensity")
 # distributional figures --------------------------------------------------
 
 # these figures are no longer really of much interest b/
@@ -301,7 +307,8 @@ dev.off()
 
 # figs--markov vs original ------------------------------------------------
 
-
+# UPDATE these figures!
+if (FALSE){
 pdf("figures/original_vs_markov_distributions_v2.pdf")
 
 # * figs -- daily distributions -------------------------------------------
@@ -378,9 +385,10 @@ g <- g2 +
 wrap_site(g)
 
 dev.off()
-
+}
 # * figs--monthly means ------------------------------------------------
-pdf("figures/original_vs_markov_monthly_v1.pdf")
+names(cols2) <- c("ambient", "2x intensity")
+pdf("figures/original_vs_markov_monthly_v2.pdf")
 
 p <- ggplot(monthly_ppt, aes(x = month, color = manip, linetype = markov)) +
   facet_wrap(~site) +
@@ -430,12 +438,12 @@ diff_figs <- function(data,
 }
 
 
-pdf("figures/original_vs_markov_mean_annual_v1.pdf")
+pdf("figures/original_vs_markov_mean_annual_v2.pdf")
 diff_figs(data = diffs_mean_annual,
           orig_amb = "map_orig_amb_diff",
           orig_2x = "map_orig_2x_diff") +
   labs(subtitle = "Differences between MAP of simulated ambient and 2x intensity ppt, \n and observed (weather db) MAP ",
-       x = "Mean annual ppt difference (mm)")
+       x = "Mean annual ppt difference (cm)")
 
 # Note: there is a problem with here--tmax adjustment not working!
 diff_figs(data = diffs_mean_annual,

@@ -6,6 +6,7 @@
 # to allow for further testing of whether manipulating the input
 # markov files works
 
+# NEXT: consider running this (in parallel) on the cluster for 200 sites
 # dependencies ------------------------------------------------------------
 
 library(dplyr)
@@ -21,7 +22,7 @@ rSOILWAT2::dbW_setConnection(db_path, check_version = TRUE)
 
 # Diverse set of representative sites from KP
 sites <- c(5, 15, 74, 76, 102, 103, 119, 124, 141, 156, 162, 172, 177, 184)
-
+names(sites) <- sites
 # estimate coeffs ---------------------------------------------------------
 
 coeff_l <- map(sites, function(site) {
@@ -42,6 +43,20 @@ coeff_l <- map(sites, function(site) {
   out
 })
 
+
+# examining coeffs --------------------------------------------------------
+# difference in expected MAP between ambient and 2x. Note these differences
+# are miniscule but for some sites (especially 119 and 177), the simulated
+# ambient and 2x MAPs were quite different. This suggests the expected ppt 
+# function is missing something. 
+
+exp_diffs <- map_dbl(coeff_l, function(x) {
+  ex_2x <- precipr::expected_ppt(x$coeffs_2x, adjust_for_truncnorm = TRUE)
+  ex_amb <- precipr::expected_ppt(x$coeffs_amb, adjust_for_truncnorm = TRUE)
+  ex_2x - ex_amb
+})
+exp_diffs
+max(exp_diffs)
 # simulate wx -------------------------------------------------------------
 
 out_path <- "../sitedata/ppt/markov_ppt_14sites_20210407.csv"
@@ -63,9 +78,11 @@ x_empty <- list(new("swWeatherData")) # empty weather object
 # * ambient intensity -----------------------------------------------------
 
 # generate weather just based on the input coeffs
+seed <- 1234
 map2(coeff_l, sites, function(x, site) {
     wout1 <- dbW_generateWeather(x_empty, years = years,
-                                 wgen_coeffs = x$coeffs_ambient)
+                                 wgen_coeffs = x$coeffs_ambient,
+                                 seed = seed)
     
     out <- dbW_weatherData_to_dataframe(wout1) %>% 
       as.data.frame() %>% 
@@ -82,7 +99,8 @@ map2(coeff_l, sites, function(x, site) {
 map2(coeff_l, sites, function(x, site) {
 
   wout1 <- dbW_generateWeather(x_empty, years = years,
-                               wgen_coeffs = x$coeffs_2x)
+                               wgen_coeffs = x$coeffs_2x,
+                               seed = seed)
   
   out <- dbW_weatherData_to_dataframe(wout1) %>% 
     as.data.frame() %>% 
@@ -92,3 +110,5 @@ map2(coeff_l, sites, function(x, site) {
   write_csv(out, out_path, append = TRUE)
   site
 })
+
+rSOILWAT2::dbW_disconnectConnection()
