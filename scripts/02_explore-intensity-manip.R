@@ -106,14 +106,12 @@ yrly_df_all <- comb_wx_long %>%
             mean_Tmax = mean(Tmax_C),
             mean_Tmin = mean(Tmin_C)) # number of small events
 
+
+
 # note this year has 0 ppt. Is that just chance or an issue with 
 # the coeff adjustment?
 yrly_df_all %>% 
   filter(ap == 0)
-
-# only original (db) wx
-yrly_df <- yrly_df_all %>% 
-  filter(!markov)
 
 # compare original and markov ---------------------------------------------
 
@@ -125,30 +123,8 @@ comb_wx_long2 <- comb_wx_long %>%
   bind_rows(ppt_markov)
 
 yrly_df_all2 <- yrly_df_all %>% 
-  filter(manip %in% c("ambient", "event 2x intensity"))
-
-
-# compare distributions by DOY --------------------------------------------
-# trying to see what family of distribution is being used by the weather generator
-# note, days without rain on the previous day are treated differently 
-# so seperating them
-
-# daily ambient data
-dly_amb <- comb_wx_long2 %>% 
-  # to reduce size of df
-  filter(manip == "ambient") %>% 
-  mutate(DOY = as.factor(DOY))
-
-# daily ppt greater than 0
-dly_amb_gt0 <- dly_amb %>% 
-  arrange(manip, markov, site, year, DOY) %>% 
-  group_by(manip, markov, site) %>% 
-  mutate(# was there ppt on previous
-         is_prev_wet = is_prev_wet(PPT)) %>% 
-  # first day in time series will have NA
-  filter(!is.na(.data$is_prev_wet), PPT > 0) %>% 
-  ungroup()
-
+  # here 2x intensity was applied via adjusting markov coeffs
+  filter(manip %in% c("ambient", "2x intensity"))
 
 # monthly precip ----------------------------------------------------------
 
@@ -184,9 +160,11 @@ mean_annual <- yrly_df_all %>%
             ap_sd = sd(ap),
             Tmax = mean(mean_Tmax),
             Tmin = mean(mean_Tmin),
-            .groups = "drop") 
+            n_days = mean(n_days),
+            .groups = "drop")
 
-diffs_mean_annua <- mean_annual%>% 
+
+diffs_mean_annual <- mean_annual%>% 
   mutate(manip = str_replace(manip, " ", "_"),
          manip_markov = paste(manip, markov, sep = "_")) %>% 
   select(-manip, -markov) %>% 
@@ -222,96 +200,15 @@ density_rug <- function(x) {
 
 cols1 <- c("blue", "black", "red") 
 cols2 <- c("blue", "red")
-# names(cols2) <- c("ambient", "2x intensity")
+names(cols2) <- c("ambient", "2x intensity")
 # distributional figures --------------------------------------------------
 
-# these figures are no longer really of much interest b/
-# I probably won't manipulate intensity this way (e.g. removing from odd and
-# add to even events)
+# these figures are no longer really of much interest--so have removed code
+# on 4/11/21 (they were based on adding/removing events type manipulation)
 
-if (FALSE){
-pdf("figures/ambient_vs_intensity_distributions_v2.pdf")
-
-g <- ggplot(comb_wx_long[comb_wx_long$PPT > 0, ], 
-            aes(x = PPT, color = manip)) +
-  geom_density() +
-  labs(x = "Daily PPT (cm)",
-       title = "Intensity increased by adding odd ppt days/events to evens") +
-  scale_color_manual(values =cols1)
-
-wrap_site(g)
-
-
-# distributions of yrly stats ---------------------------------------------
-
-g2 <- ggplot(yrly_df, aes(color = manip)) +
-  scale_color_manual(values = cols1) +
-  labs(subtitle = "by site",
-       caption = "Distributions of yearly summaries")
-
-
-g4 <- g2 +
-  density_rug("med_PPT") +
-  labs(title = "Median daily PPT on days with PPT")
-
-wrap_site(g4)
-
-g5 <- g2 +
-  density_rug("mean_PPT") +
-  labs(title = "Mean daily PPT on days with PPT")
-
-wrap_site(g5)
-
-g6 <- g2 +
-  density_rug("ap") +
-  labs(title = "Annual precip",
-       x = "Annual PPT (cm)")
-
-wrap_site(g6)
-
-g3 <- g2 +
-  density_rug("n_days") +
-  labs(title = "number of days per year with precip")
-
-wrap_site(g3) 
-
-g7 <- g2 +
-  density_rug("n_events") +
-  labs(title = "Number of precipitation events (periods with 1 or more consecutive rain days)",
-       x = "N events")
-
-wrap_site(g7) 
-
-g8 <- g2 +
-  density_rug("n_multi_events") +
-  labs(title = "Number of multiday (>=2 days) precip events",
-       x = "N events)")
-wrap_site(g8)
-g9 <- g2 +
-  density_rug("max_event_length") +
-  labs(title = "Maximum event length (number of consecutive days)",
-       x = "Days")
-wrap_site(g9)
-
-g10 <- g2 +
-  density_rug("prop_multi_events") +
-  labs(title = "Proportion of precip events that are multiday",
-       x = "Proportion")
-wrap_site(g10)
-
-g11 <- g2 +
-  density_rug("mean_event_size") +
-  labs(title = "Mean event size (event = consecutive ppt days)",
-       x = "Mean event size (cm)")
-wrap_site(g11)
-
-dev.off()
-}
 
 # figs--markov vs original ------------------------------------------------
 
-# UPDATE these figures!
-if (FALSE){
 pdf("figures/original_vs_markov_distributions_v2.pdf")
 
 # * figs -- daily distributions -------------------------------------------
@@ -329,7 +226,7 @@ ggplot(comb_wx_long2[comb_wx_long2$PPT > 0, ],
 g2 <- ggplot(yrly_df_all2, aes(color = manip, linetype = markov)) +
   scale_color_manual(values = cols2) +
   labs(subtitle = "by site",
-       caption = "Distributions of yearly summaries, markov vs original")
+       caption = "Distributions of yearly summaries, markov vs original\n Intensity manipulated by adjusting markov coeffs.")
 
 
 g <- g2 +
@@ -340,7 +237,7 @@ wrap_site(g)
 
 g <- g2 +
   geom_density(aes(mean_PPT)) +
-  labs(title = "Mean daily PPT on days with PPT")
+  labs(title = "Mean daily PPT on days with PPT") 
 
 wrap_site(g)
 
@@ -388,9 +285,9 @@ g <- g2 +
 wrap_site(g)
 
 dev.off()
-}
+
 # * figs--monthly means ------------------------------------------------
-names(cols2) <- c("ambient", "2x intensity")
+
 pdf("figures/original_vs_markov_monthly_v2.pdf")
 
 p <- ggplot(monthly_ppt, aes(x = month, color = manip, linetype = markov)) +
@@ -442,13 +339,14 @@ diff_figs <- function(data,
 
 
 pdf("figures/original_vs_markov_mean_annual_v3.pdf")
+
 diff_figs(data = diffs_mean_annual,
           orig_amb = "map_orig_amb_diff",
           orig_2x = "map_orig_2x_diff") +
   labs(subtitle = "Differences between MAP of simulated ambient and 2x intensity ppt, \n and observed (weather db) MAP ",
        x = "Mean annual ppt difference (cm)")
 
-# Note: there is a problem with here--tmax adjustment not working!
+# Note: there is a problem with here--tmax adjustment not working perfectly
 diff_figs(data = diffs_mean_annual,
           orig_amb = "Tmax_orig_amb_diff",
           orig_2x = "Tmax_orig_2x_diff") +
@@ -460,19 +358,31 @@ diff_figs(data = diffs_mean_annual,
           orig_2x = "Tmin_orig_2x_diff") +
   labs(subtitle = "Differences between mean of simulated ambient and 2x intensity Tmin, \n and observed (weather db) Tmin ",
        x = "Temperature difference (C)")
-dev.off()
-# *figs distribution by doy -----------------------------------------------
 
-dly_amb_gt0 %>% 
-  # don't want to plot all DOYs
-  filter(DOY %in% seq(from = 20, to = 360, by = 40), !is_prev_wet) %>% 
-  ggplot(aes(PPT, linetype = markov))+
-  geom_density() +
-  facet_grid(DOY~site, scales = 'free')
-
-
-# misc  -------------------------------------------------------------------
-
+# nwet ratio
 mean_annual %>% 
-  filter(manip == "2x intensity") %>% 
-  filter(ap_sd == max(ap_sd))
+  filter(markov) %>% 
+  group_by(site) %>% 
+  summarize(nwet_ratio = n_days[manip == "2x intensity"]/n_days[manip == "ambient"],
+            .groups = "drop") %>% 
+  ggplot(aes(nwet_ratio, as.factor(site))) + 
+  geom_vline(xintercept = 0.5, linetype = 2) +
+  geom_point() +
+  labs(caption = cap1,
+       y = "site",
+       x = "(n wet days 2x intensity)/(n wet days ambient)",
+       subtitle = "Ratio of number of wet days in 2x intensity versus ambient simulations")
+  
+# interannual ppt ratio
+mean_annual %>% 
+  group_by(site) %>% 
+  summarize(ap_ratio = ap_sd[manip == "2x intensity"]/ap_sd[manip == "ambient"]) %>% 
+  ggplot(aes(ap_ratio)) +
+  geom_histogram(bins = 10) +
+  labs(caption = cap1,
+       x = "(interannual ppt sd 2x)/(interannual ppt sd ambient)",
+       subtitle = "Ratio of interannual PPT standard dev, 2x intensity:ambient") +
+  geom_vline(xintercept = 1, linetype = 2)
+
+dev.off()
+
