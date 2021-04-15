@@ -1,3 +1,6 @@
+# martin holdrege
+
+# script started April 15, 2021
 
 # example figure of distirubtion of daily event size
 
