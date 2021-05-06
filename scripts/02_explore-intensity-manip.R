@@ -305,6 +305,17 @@ p +
   geom_line(aes(y = PPT_med)) +
   labs(y = "PPT (cm)",
        subtitle = "Median monthly precipitation")
+
+p +
+  geom_line(aes(y = PPT_sd)) +
+  labs(y = "PPT SD (cm)",
+       subtitle = "Standard deviation (between years) of monthly precipitation")
+
+p +
+  geom_line(aes(y = PPT_sd/PPT_m)) +
+  labs(y = "Coefficient of variation (sd/mean)",
+       subtitle = "Coefficient of variation of monthly precipitation (between year variability)")
+
 # max temp
 p +
   geom_line(aes(y = Tmax_m)) +
@@ -383,6 +394,19 @@ mean_annual %>%
        x = "(interannual ppt sd 2x)/(interannual ppt sd ambient)",
        subtitle = "Ratio of interannual PPT standard dev, 2x intensity:ambient") +
   geom_vline(xintercept = 1, linetype = 2)
+
+# CV
+mean_annual %>% 
+  mutate(CV = ap_sd/map) %>% 
+  ggplot(aes(x = CV, y = as.factor(site), color = manip, shape = markov)) + 
+  geom_hline(aes(yintercept = as.factor(site)), linetype = 3, color = "grey",
+             alpha = 0.5) +
+  geom_point() +
+  scale_color_manual(values = cols2) +
+  labs(y = "site",
+       x = "CV (sd/mean)",
+       caption = cap1,
+       title = "Coefficient of variation of annual precipitation")
 
 dev.off()
 
